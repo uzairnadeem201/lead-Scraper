@@ -288,7 +288,7 @@ export default function Page() {
           />
         </div>
         <div className="map-hint">
-          {lat !== null ? <span className="coords">Center: {lat.toFixed(4)}, {lng.toFixed(4)} — Drag pin to adjust</span> : <span>Click the map or search a location</span>}
+          {lat !== null && lng !== null ? <span className="coords">Center: {lat.toFixed(4)}, {lng.toFixed(4)} — Drag pin to adjust</span> : <span>Click the map or search a location</span>}
         </div>
         <div className="radius-control">
           <div className="radius-header">
