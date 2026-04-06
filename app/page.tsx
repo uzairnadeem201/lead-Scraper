@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { NICHES, classifyWebsite, generateGridPoints, proxyFetch, sleep, downloadExcel } from '@/lib/scraper';
+import { getScrapeHistory, saveScrapeSession, getKnownPlaceIds } from '@/lib/actions';
+import { LogOut, LogIn, User, Lock, Trash2, MapPin, Search, Play, CheckCircle, AlertCircle, History } from 'lucide-react';
 
 const MapComponent = dynamic(() => import('@/components/Map'), { ssr: false });
 
 export default function Page() {
+  const { data: session, status } = useSession();
   const [locationStr, setLocationStr] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
@@ -14,7 +18,9 @@ export default function Page() {
   const [selectedNiche, setSelectedNiche] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState('no_website');
   
-  const [history, setHistory] = useState<{ scraped_ids: Record<string, any>, sessions: any[] }>({ scraped_ids: {}, sessions: [] });
+  // History from DB
+  const [historySessions, setHistorySessions] = useState<any[]>([]);
+  const [knownPlaceIds, setKnownPlaceIds] = useState<Set<string>>(new Set());
   const [mapHistoryPoints, setMapHistoryPoints] = useState<any[]>([]);
 
   // Progress UI
@@ -27,38 +33,75 @@ export default function Page() {
   const [logs, setLogs] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [results, setResults] = useState<any[]>([]);
+  
+  // Auth Form
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // On mount load history
-  useEffect(() => {
+  // Load history when session is available or niche changes
+  const loadHistory = useCallback(async () => {
+    if (status !== 'authenticated') return;
+    
     try {
-      const h = localStorage.getItem('scrape_history');
-      if (h) {
-        const parsed = JSON.parse(h);
-        setHistory(parsed);
-        const mapPts = parsed.sessions.map((s: any) => ({
-          lat: s.lat, lng: s.lng, radius_km: s.radius_km, title: `${s.niche_name} - ${s.date}`
-        }));
-        setMapHistoryPoints(mapPts);
+      const data = await getScrapeHistory();
+      setHistorySessions(data);
+      
+      const ids = await getKnownPlaceIds();
+      setKnownPlaceIds(ids);
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    }
+  }, [status]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  const handleCredentialsLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username || !password) return;
+    
+    setIsLoggingIn(true);
+    setAuthError('');
+    
+    try {
+      const result = await signIn('credentials', {
+        username,
+        password,
+        redirect: false
+      });
+      
+      if (result?.error) {
+        setAuthError('Invalid username or password');
+      } else {
+        setUsername('');
+        setPassword('');
       }
-    } catch {}
-  }, []);
-
-  const saveHistory = (newHistory: any) => {
-    setHistory(newHistory);
-    localStorage.setItem('scrape_history', JSON.stringify(newHistory));
-    const mapPts = newHistory.sessions.map((s: any) => ({
-      lat: s.lat, lng: s.lng, radius_km: s.radius_km, title: `${s.niche_name} - ${s.date}`
-    }));
-    setMapHistoryPoints(mapPts);
-  };
-
-  const clearHistory = () => {
-    if (confirm("Clear all scrape history? This will reset deduplication.")) {
-      saveHistory({ scraped_ids: {}, sessions: [] });
+    } catch (err) {
+      setAuthError('An error occurred during login');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const appendLog = (msg: string) => setLogs(prev => [...prev, msg].slice(-20)); // keep last 20
+  // Update map points based on history and selected niche
+  useEffect(() => {
+    const filtered = selectedNiche 
+      ? historySessions.filter(s => s.niche === selectedNiche)
+      : historySessions;
+
+    const mapPts = filtered.map((s: any) => ({
+      lat: s.lat, 
+      lng: s.lng, 
+      radius_km: s.radiusKm, 
+      title: `${NICHES[s.niche]?.name || s.niche} - ${new Date(s.createdAt).toLocaleDateString()}`
+    }));
+    setMapHistoryPoints(mapPts);
+  }, [historySessions, selectedNiche]);
+
+  const appendLog = (msg: string) => setLogs(prev => [...prev, msg].slice(-20));
 
   const handleLocate = async () => {
     if (!locationStr) return;
@@ -77,7 +120,7 @@ export default function Page() {
   };
 
   const startScrape = async () => {
-    if (!lat || !lng || !selectedNiche) return;
+    if (!lat || !lng || !selectedNiche || status !== 'authenticated') return;
 
     setIsRunning(true);
     setErrorMessage('');
@@ -89,7 +132,6 @@ export default function Page() {
     setStatDups(0);
 
     const niche = NICHES[selectedNiche];
-    const knownIds = new Set(Object.keys(history.scraped_ids || {}));
     
     try {
       setPhaseTitle("🔍 Discovering Businesses...");
@@ -106,7 +148,7 @@ export default function Page() {
       for (const term of niche.terms) {
         appendLog(`Text search: "${term}"`);
         let pageToken = '';
-        for (let p = 0; p < 3; p++) { // max 3 pages
+        for (let p = 0; p < 3; p++) {
           const res: any = await proxyFetch('place/textsearch/json', {
             query: term,
             location: `${lat},${lng}`,
@@ -122,7 +164,7 @@ export default function Page() {
           } else break;
         }
         pCount++;
-        setProgressPct(Math.round((pCount / totalDiscoverySteps) * 30)); // First 30% is discovery
+        setProgressPct(Math.round((pCount / totalDiscoverySteps) * 30));
       }
 
       // 2. Grid Nearby Search Sweep
@@ -157,8 +199,8 @@ export default function Page() {
 
       // Deduplication Phase
       const discoveredIds = Object.keys(allP);
-      const newIds = discoveredIds.filter(pid => !knownIds.has(pid));
-      const dupIds = discoveredIds.filter(pid => knownIds.has(pid));
+      const newIds = discoveredIds.filter(pid => !knownPlaceIds.has(pid));
+      const dupIds = discoveredIds.filter(pid => knownPlaceIds.has(pid));
       
       setStatDups(dupIds.length);
       appendLog(`Found ${discoveredIds.length} places — ${newIds.length} new, ${dupIds.length} already scraped`);
@@ -166,6 +208,8 @@ export default function Page() {
       // 3. Details Phase
       setPhaseTitle("📋 Getting Details (new only)...");
       const allRes: any[] = [];
+      const leadsForDb: any[] = [];
+
       for (let i = 0; i < newIds.length; i++) {
         const pid = newIds[i];
         const info = allP[pid];
@@ -192,35 +236,36 @@ export default function Page() {
               rating: d.rating || "",
               total_reviews: d.user_ratings_total || 0,
               google_maps_url: d.url || "",
+              place_id: pid,
            };
            allRes.push(row);
+           leadsForDb.push(row);
            
            if (filterMode === 'no_website' && !row.has_website) setStatLeads(prev => prev + 1);
            if (filterMode === 'with_website' && row.has_website) setStatLeads(prev => prev + 1);
            if (filterMode === 'all') setStatLeads(allRes.length);
         }
 
-        setProgressPct(30 + Math.round(((i + 1) / newIds.length) * 60)); // Discovery 30%, Details 60%
+        setProgressPct(30 + Math.round(((i + 1) / newIds.length) * 60));
         if ((i + 1) % 10 === 0) appendLog(`Details: ${i+1}/${newIds.length}`);
         await sleep(100);
       }
 
-      setPhaseTitle("💾 Finalizing & Creating Excel...");
+      setPhaseTitle("💾 Saving to Database...");
       setProgressPct(95);
 
-      // Save History
-      const newHistory = { ...history };
-      const now = new Date().toLocaleString();
-      newIds.forEach(pid => {
-        newHistory.scraped_ids[pid] = { niche: selectedNiche, date: now };
+      // Save to DB
+      await saveScrapeSession({
+        niche: selectedNiche,
+        location: locationStr || "Map Area",
+        lat,
+        lng,
+        radiusKm,
+        leadsData: leadsForDb
       });
-      newHistory.sessions.push({
-        date: now, niche: selectedNiche, niche_name: niche.name,
-        location: locationStr || "Map Drop", radius_km: radiusKm,
-        lat, lng, total_discovered: discoveredIds.length,
-        new_leads: allRes.length, duplicates_skipped: dupIds.length
-      });
-      saveHistory(newHistory);
+
+      // Reload global history
+      await loadHistory();
 
       // Filter and Export Setup
       let filtered = [...allRes];
@@ -233,8 +278,6 @@ export default function Page() {
       setPhaseTitle("✅ Complete!");
       
       const filename = `leads_${selectedNiche}_${new Date().toISOString().slice(0,10).replace(/-/g,"")}.xlsx`;
-      
-      // Auto Download
       downloadExcel(filtered, allRes, niche.name, locationStr || "Map Area", radiusKm, newIds.length, dupIds.length, filename);
       
     } catch (err: any) {
@@ -245,31 +288,117 @@ export default function Page() {
   };
 
   const hasLocation = lat !== null;
-  const isReady = hasLocation && selectedNiche;
+  const isReady = hasLocation && selectedNiche && status === 'authenticated';
 
   return (
     <>
     <div className="bg-glow bg-glow-1"></div>
     <div className="bg-glow bg-glow-2"></div>
-    <div className="container">
-      <header className="header">
-        <div className="logo">
-          <span className="logo-icon">⚡</span>
-          <h1>LeadScraper <span className="pro">Pro</span></h1>
+    
+    {status === 'unauthenticated' ? (
+      <div className="login-gate">
+        <div className="login-gate-content">
+          <div className="logo centered">
+             <span className="logo-icon">⚡</span>
+             <h1>LeadScraper <span className="pro">Pro</span></h1>
+          </div>
+          <div className="card login-card">
+            <div className="card-header">
+              <h2>Welcome Back</h2>
+            </div>
+            <p className="card-desc">Enter your account credentials to access the scraper dashboard.</p>
+            
+            <form className="login-gate-form" onSubmit={handleCredentialsLogin}>
+              <div className="input-group">
+                <span className="input-icon"><User size={20} /></span>
+                <input 
+                  type="text" 
+                  placeholder="Username" 
+                  value={username} 
+                  onChange={e => setUsername(e.target.value)} 
+                  required
+                />
+              </div>
+              
+              <div className="input-group">
+                <span className="input-icon"><Lock size={20} /></span>
+                <input 
+                  type="password" 
+                  placeholder="Password" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  required
+                />
+              </div>
+
+              {authError && <div className="auth-error-msg gate-error">{authError}</div>}
+              
+              <button type="submit" className="btn-start" disabled={isLoggingIn}>
+                <span className="btn-text">{isLoggingIn ? 'Verifying...' : 'Sign In to Portal'}</span>
+              </button>
+            </form>
+          </div>
+          <p className="login-footer">Private System &copy; 2026 LeadScraper Pro</p>
         </div>
-        <p className="tagline">Find local businesses on Google Maps <em>without websites</em> — your next clients.</p>
+      </div>
+    ) : (
+      <div className="container">
+      <header className="header">
+        <div className="header-left">
+          <div className="logo">
+            <span className="logo-icon">⚡</span>
+            <h1>LeadScraper <span className="pro">Pro</span></h1>
+          </div>
+          <p className="tagline">Find local businesses on Google Maps <em>without websites</em>.</p>
+        </div>
+        
+        <div className="header-right">
+          {status === 'authenticated' && (
+            <div className="user-profile">
+              <div className="user-info">
+                <span className="user-name">{session.user?.name || session.user?.username || "Admin"}</span>
+                <span className="user-status">System Active</span>
+              </div>
+              <button className="btn-logout" onClick={() => signOut()}>
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
-      {/* Location & Map */}
+      {/* Step 1: Niche */}
       <section className="card">
         <div className="card-header">
           <span className="step-badge">1</span>
+          <h2>Select Niche</h2>
+        </div>
+        <div className="niche-grid">
+          {Object.entries(NICHES).map(([key, n]) => (
+            <button 
+               key={key} 
+               className={`niche-card ${selectedNiche === key ? 'selected' : ''}`}
+               onClick={() => !isRunning && setSelectedNiche(key)}
+               disabled={isRunning}
+            >
+              <span className="niche-icon">{n.icon}</span>
+              <span className="niche-name">{n.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Step 2: Location & Map */}
+      <section className="card">
+        <div className="card-header">
+          <span className="step-badge">2</span>
           <h2>Location & Radius</h2>
         </div>
         <p className="card-desc">Type a city or <strong>click on the map</strong> to set your search center.</p>
         <div className="location-row">
           <div className="input-group" style={{flex: 1}}>
-            <span className="input-icon">📍</span>
+            <span className="input-icon"><MapPin size={18} /></span>
             <input 
                type="text" 
                placeholder="e.g. Atlanta, GA" 
@@ -299,26 +428,45 @@ export default function Page() {
         </div>
       </section>
 
-      {/* Niche */}
-      <section className="card">
-        <div className="card-header">
-          <span className="step-badge">2</span>
-          <h2>Select Niche</h2>
-        </div>
-        <div className="niche-grid">
-          {Object.entries(NICHES).map(([key, n]) => (
-            <button 
-               key={key} 
-               className={`niche-card ${selectedNiche === key ? 'selected' : ''}`}
-               onClick={() => !isRunning && setSelectedNiche(key)}
-               disabled={isRunning}
-            >
-              <span className="niche-icon">{n.icon}</span>
-              <span className="niche-name">{n.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* NEW: Scrape History Section (Moved Up) */}
+      {status === 'authenticated' && (
+        <section className="card history-card">
+          <div className="card-header">
+            <span className="step-badge icon"><History size={18} /></span>
+            <h2>Regional Coverage</h2>
+            {selectedNiche && <span className="meta-badge purple">{NICHES[selectedNiche].name}</span>}
+          </div>
+          <p className="card-desc">
+            {selectedNiche 
+              ? `Showing coverage areas specifically for ${NICHES[selectedNiche].name}.`
+              : "Showing all your historical coverage across all niches."}
+          </p>
+          <div className="history-list min-h-[100px]">
+            {historySessions.filter(s => !selectedNiche || s.niche === selectedNiche).length > 0 ? (
+              historySessions
+                .filter(s => !selectedNiche || s.niche === selectedNiche)
+                .slice(0, 5)
+                .map((s, idx) => (
+                  <div className="history-item" key={idx}>
+                    <span className="history-icon">{NICHES[s.niche]?.icon || '📍'}</span>
+                    <div className="history-info">
+                      <div className="h-title">{s.location}</div>
+                      <div className="h-meta">{new Date(s.createdAt).toLocaleDateString()} · {s.radiusKm}km radius</div>
+                    </div>
+                    <span className="history-count">Session</span>
+                  </div>
+                ))
+            ) : (
+              <div className="empty-history">
+                <AlertCircle size={20} />
+                <span>No history found for {selectedNiche ? NICHES[selectedNiche].name : "any niche"}.</span>
+              </div>
+            )}
+            {historySessions.length > 5 && <div className="history-more">And {historySessions.length - 5} more sessions...</div>}
+          </div>
+        </section>
+      )}
+
 
       {/* Filter */}
       <section className="card">
@@ -344,7 +492,7 @@ export default function Page() {
 
       <button className="btn-start" onClick={startScrape} disabled={!isReady || isRunning}>
         <span className="btn-text">{isRunning ? 'Running...' : '🚀 Start Scraping'}</span>
-        <span className="btn-sub">Only NEW leads are fetched — duplicates are automatically skipped</span>
+        <span className="btn-sub">Deduplication is active — skipping results found in your history</span>
       </button>
 
       {/* Progress */}
@@ -373,22 +521,19 @@ export default function Page() {
           )}
         </section>
       )}
+
       {/* Results */}
       {results && results.length > 0 && !isRunning && progressPct === 100 && (
         <section className="card results-card" id="resultsSection">
           <div className="results-header">
             <div>
               <h2>🎯 Results</h2>
-              <p>{results.length} {filterMode === 'no_website' ? 'without a website' : filterMode === 'with_website' ? 'with a website' : 'total'} — showing top {Math.min(results.length, 100)}</p>
+              <p>{results.length} leads — showing top {Math.min(results.length, 100)}</p>
             </div>
             <button className="btn-download" onClick={() => {
                 const nicheName = selectedNiche ? NICHES[selectedNiche]?.name : "Leads";
                 downloadExcel(results, results, nicheName, locationStr || "Map Area", radiusKm, results.length, statDups, `leads_${selectedNiche}_${new Date().toISOString().slice(0,10).replace(/-/g,"")}.xlsx`);
-            }}>📥 Download Excel again</button>
-          </div>
-          <div className="results-meta">
-            <span className="meta-badge green">✅ {statLeads} new leads</span>
-            <span className="meta-badge yellow">🔁 {statDups} duplicates skipped</span>
+            }}>📥 Download Excel</button>
           </div>
           <div className="table-wrap">
             <table id="resultsTable">
@@ -418,32 +563,8 @@ export default function Page() {
           </div>
         </section>
       )}
-
-      {/* History */}
-      <section className="card history-card">
-        <div className="card-header">
-          <h2>📋 Scrape History</h2>
-          <button className="btn-clear" onClick={clearHistory}>Clear All</button>
-        </div>
-        <div className="history-summary">
-          {Object.keys(history.scraped_ids).length > 0 
-            ? <><strong>{Object.keys(history.scraped_ids).length}</strong> unique businesses scraped across {history.sessions.length} session(s)</>
-            : "No scrapes yet. Start your first one above!"}
-        </div>
-        <div className="history-list">
-          {history.sessions.slice().reverse().map((s, idx) => (
-             <div className="history-item" key={idx}>
-                <span className="history-icon">📍</span>
-                <div className="history-info">
-                  <div className="h-title">{s.niche_name} in {s.location}</div>
-                  <div className="h-meta">{s.date} · {s.radius_km}km radius</div>
-                </div>
-                <span className="history-count">+{s.new_leads} new</span>
-             </div>
-          ))}
-        </div>
-      </section>
-    </div>
+      </div>
+    )}
     </>
   );
 }
