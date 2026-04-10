@@ -1,55 +1,64 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+import { callGoogleMaps } from "@/lib/runs/google";
+
+type AllowedEndpoint =
+  | "place/textsearch/json"
+  | "place/details/json"
+  | "place/nearbysearch/json";
+
+type ProxyParams = Record<string, string | number | undefined>;
+
+const ALLOWED_ENDPOINTS: AllowedEndpoint[] = [
+  "place/textsearch/json",
+  "place/details/json",
+  "place/nearbysearch/json",
+];
+
+function normalizeParams(input: unknown): ProxyParams {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+
+  const params: ProxyParams = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (
+      value === undefined ||
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number"
+    ) {
+      params[key] = value ?? undefined;
+    }
+  }
+
+  return params;
+}
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { endpoint, params } = body;
+    const body = (await request.json()) as {
+      endpoint?: string;
+      params?: unknown;
+    };
 
-    if (!GOOGLE_MAPS_API_KEY) {
-      return NextResponse.json(
-        { error: 'Server is missing GOOGLE_MAPS_API_KEY environment variable. Add it to .env or Vercel settings.' },
-        { status: 500 }
-      );
+    if (!body.endpoint) {
+      return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
     }
 
-    if (!endpoint) {
-      return NextResponse.json({ error: 'Missing endpoint' }, { status: 400 });
+    if (!ALLOWED_ENDPOINTS.includes(body.endpoint as AllowedEndpoint)) {
+      return NextResponse.json({ error: "Endpoint not allowed" }, { status: 403 });
     }
 
-    // Define permitted endpoints for security
-    const allowedEndpoints = [
-      'geocode/json',
-      'place/textsearch/json',
-      'place/nearbysearch/json',
-      'place/details/json',
-    ];
-
-    if (!allowedEndpoints.includes(endpoint)) {
-      return NextResponse.json({ error: 'Endpoint not allowed' }, { status: 403 });
-    }
-
-    // Build query params
-    const queryParams = new URLSearchParams();
-    if (params) {
-      for (const key of Object.keys(params)) {
-        if (params[key] !== undefined && params[key] !== null) {
-            queryParams.append(key, String(params[key]));
-        }
-      }
-    }
-    queryParams.append('key', GOOGLE_MAPS_API_KEY);
-
-    const url = `https://maps.googleapis.com/maps/api/${endpoint}?${queryParams.toString()}`;
-
-    // Standard Google Maps API Proxy Fetch
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await callGoogleMaps(
+      body.endpoint as AllowedEndpoint,
+      normalizeParams(body.params)
+    );
 
     return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Google Maps API Proxy Error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Google Places API proxy error:", error);
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -6,6 +6,19 @@ import { auth } from '@/auth';
 import { eq, desc, and } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
+type LegacyLeadInput = {
+  business_name: string;
+  address: string;
+  phone: string;
+  website: string;
+  social_link: string;
+  social_platform: string;
+  rating: string | number;
+  total_reviews: number;
+  google_maps_url: string;
+  place_id: string;
+};
+
 export async function getScrapeHistory(niche?: string) {
   const session = await auth();
   if (!session?.user?.id) return [];
@@ -26,7 +39,7 @@ export async function saveScrapeSession(params: {
   lat: number;
   lng: number;
   radiusKm: number;
-  leadsData: any[]; // The raw leads from the scrape
+  leadsData: LegacyLeadInput[]; // The raw leads from the scrape
 }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");

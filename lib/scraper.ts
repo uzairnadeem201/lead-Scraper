@@ -7,6 +7,21 @@ export type NicheDef = {
   types: string[];
 };
 
+export type ProxyParams = Record<string, string | number | boolean | undefined>;
+
+export type ExportLead = {
+  business_name: string;
+  address: string;
+  phone: string;
+  website: string;
+  has_website_label?: string;
+  social_link: string;
+  social_platform: string;
+  rating: string | number;
+  total_reviews: number;
+  google_maps_url: string;
+};
+
 export const NICHES: Record<string, NicheDef> = {
   barbers: {
     name: "Barbers / Hair Salons", icon: "💈",
@@ -92,7 +107,7 @@ export function generateGridPoints(lat: number, lng: number, radiusKm: number) {
   return pts;
 }
 
-export async function proxyFetch(endpoint: string, params: Record<string, any>) {
+export async function proxyFetch(endpoint: string, params: ProxyParams) {
   const res = await fetch('/api/google', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -108,8 +123,8 @@ export async function proxyFetch(endpoint: string, params: Record<string, any>) 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export function downloadExcel(
-  leads: any[],
-  allResults: any[],
+  leads: ExportLead[],
+  allResults: ExportLead[],
   nicheName: string,
   location: string,
   radiusKm: number,

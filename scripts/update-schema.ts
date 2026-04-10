@@ -22,11 +22,11 @@ async function main() {
     // Add unique constraint separately to avoid errors if it exists
     try {
       await sql`ALTER TABLE "user" ADD CONSTRAINT "user_username_unique" UNIQUE("username");`;
-    } catch (e: any) {
-      if (e.code === '42710') {
+    } catch (error: unknown) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === '42710') {
         console.log("Unique constraint 'user_username_unique' already exists.");
       } else {
-        throw e;
+        throw error;
       }
     }
 

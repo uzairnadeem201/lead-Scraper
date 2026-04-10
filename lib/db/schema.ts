@@ -7,6 +7,7 @@ import {
   uuid,
   doublePrecision,
   boolean,
+  unique,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccount } from "next-auth/adapters";
 
@@ -96,5 +97,123 @@ export const leads = pgTable("lead", {
   totalReviews: integer("totalReviews"),
   googleMapsUrl: text("googleMapsUrl"),
   placeId: text("placeId").notNull(), // Important for deduplication
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const runLeads = pgTable(
+  "run_lead",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    niche: text("niche").notNull(),
+    placeId: text("placeId").notNull(),
+    businessName: text("businessName").notNull(),
+    address: text("address"),
+    phoneDisplay: text("phoneDisplay"),
+    phoneDigits: text("phoneDigits"),
+    websiteUrl: text("websiteUrl"),
+    socialLink: text("socialLink"),
+    socialPlatform: text("socialPlatform"),
+    classification: text("classification").notNull(),
+    businessStatus: text("businessStatus"),
+    isLikelyChain: boolean("isLikelyChain").default(false).notNull(),
+    googleMapsUrl: text("googleMapsUrl"),
+    rating: doublePrecision("rating"),
+    totalReviews: integer("totalReviews"),
+    firstSeenAt: timestamp("firstSeenAt").defaultNow().notNull(),
+    lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueLeadPerUserAndNiche: unique("run_lead_user_niche_place_unique").on(
+      table.userId,
+      table.niche,
+      table.placeId
+    ),
+  })
+);
+
+export const scrapeRuns = pgTable("scrape_run", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  niche: text("niche").notNull(),
+  campaignMode: text("campaignMode").notNull(),
+  locationLabel: text("locationLabel").notNull(),
+  isMapClickBasedLocation: boolean("isMapClickBasedLocation")
+    .default(false)
+    .notNull(),
+  lat: doublePrecision("lat").notNull(),
+  lng: doublePrecision("lng").notNull(),
+  radiusKm: integer("radiusKm").notNull(),
+  targetCount: integer("targetCount").notNull(),
+  status: text("status").notNull(),
+  stopReason: text("stopReason"),
+  currentPhase: text("currentPhase"),
+  currentTerm: text("currentTerm"),
+  discoveredCount: integer("discoveredCount").default(0).notNull(),
+  matchingLeadCount: integer("matchingLeadCount").default(0).notNull(),
+  duplicatesSkipped: integer("duplicatesSkipped").default(0).notNull(),
+  discoveryCallCount: integer("discoveryCallCount").default(0).notNull(),
+  detailsCallCount: integer("detailsCallCount").default(0).notNull(),
+  cancelRequested: boolean("cancelRequested").default(false).notNull(),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const runLeadSnapshots = pgTable("run_lead_snapshot", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  runId: uuid("runId")
+    .notNull()
+    .references(() => scrapeRuns.id, { onDelete: "cascade" }),
+  leadId: uuid("leadId")
+    .notNull()
+    .references(() => runLeads.id, { onDelete: "cascade" }),
+  placeId: text("placeId").notNull(),
+  niche: text("niche").notNull(),
+  businessName: text("businessName").notNull(),
+  businessNameNormalized: text("businessNameNormalized"),
+  addressDisplay: text("addressDisplay"),
+  addressNormalized: text("addressNormalized"),
+  phoneDisplay: text("phoneDisplay"),
+  phoneDigits: text("phoneDigits"),
+  websiteUrl: text("websiteUrl"),
+  socialLink: text("socialLink"),
+  socialPlatform: text("socialPlatform"),
+  classification: text("classification").notNull(),
+  matchReason: text("matchReason").notNull(),
+  inclusionBasis: text("inclusionBasis").notNull(),
+  hasPhone: boolean("hasPhone").default(false).notNull(),
+  hasRealWebsite: boolean("hasRealWebsite").default(false).notNull(),
+  hasSocialLink: boolean("hasSocialLink").default(false).notNull(),
+  isSocialOnly: boolean("isSocialOnly").default(false).notNull(),
+  isLikelyChain: boolean("isLikelyChain").default(false).notNull(),
+  businessStatus: text("businessStatus"),
+  isStatusUncertain: boolean("isStatusUncertain").default(false).notNull(),
+  rating: doublePrecision("rating"),
+  totalReviews: integer("totalReviews"),
+  googleMapsUrl: text("googleMapsUrl"),
+  matched: boolean("matched").notNull(),
+  rank: integer("rank"),
+  firstDiscoveryMode: text("firstDiscoveryMode"),
+  firstDiscoveryTerm: text("firstDiscoveryTerm"),
+  firstDiscoveryStage: text("firstDiscoveryStage"),
+  isMultiPathDiscovered: boolean("isMultiPathDiscovered")
+    .default(false)
+    .notNull(),
+  distinctDiscoveryPathCount: integer("distinctDiscoveryPathCount")
+    .default(1)
+    .notNull(),
+  hadDetailsRetry: boolean("hadDetailsRetry").default(false).notNull(),
+  detailsAttemptCount: integer("detailsAttemptCount").default(1).notNull(),
+  detailsSucceededAt: timestamp("detailsSucceededAt").notNull(),
+  isFirstTimeSeenInSystem: boolean("isFirstTimeSeenInSystem")
+    .default(false)
+    .notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
