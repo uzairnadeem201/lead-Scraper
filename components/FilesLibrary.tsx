@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 
 import type { RunFileItem } from "@/lib/runs/types";
 
@@ -10,7 +10,11 @@ type FilesLibraryProps = {
 };
 
 function formatDateValue(date: string) {
-  return new Date(date).toISOString().slice(0, 10);
+  const value = new Date(date);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function FilesLibrary({ runs }: FilesLibraryProps) {
@@ -18,6 +22,19 @@ export function FilesLibrary({ runs }: FilesLibraryProps) {
   const [regionFilter, setRegionFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const fromDateRef = useRef<HTMLInputElement | null>(null);
+  const toDateRef = useRef<HTMLInputElement | null>(null);
+
+  function openDatePicker(input: HTMLInputElement | null) {
+    if (!input) {
+      return;
+    }
+
+    input.focus();
+    if ("showPicker" in input) {
+      input.showPicker();
+    }
+  }
 
   const nicheOptions = useMemo(() => {
     const entries = new Map<string, string>();
@@ -95,12 +112,26 @@ export function FilesLibrary({ runs }: FilesLibraryProps) {
 
           <label className="files-filter">
             <span>From date</span>
-            <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input
+              ref={fromDateRef}
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              onClick={() => openDatePicker(fromDateRef.current)}
+              onFocus={() => openDatePicker(fromDateRef.current)}
+            />
           </label>
 
           <label className="files-filter">
             <span>To date</span>
-            <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            <input
+              ref={toDateRef}
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              onClick={() => openDatePicker(toDateRef.current)}
+              onFocus={() => openDatePicker(toDateRef.current)}
+            />
           </label>
         </div>
       </section>
