@@ -288,7 +288,19 @@ export default function Page() {
               </p>
             </div>
             <div className="header-right">
-              <Link href="/messages" className="btn-secondary btn-linklike header-files-link">
+              <Link
+                href="/messages"
+                className={`btn-secondary btn-linklike header-files-link ${
+                  dashboardData.activeRun ? "disabled-link" : ""
+                }`}
+                onClick={(event) => {
+                  if (dashboardData.activeRun) {
+                    event.preventDefault();
+                    setErrorMessage("Stop or finish the live scrape before opening Send Messages.");
+                  }
+                }}
+                aria-disabled={dashboardData.activeRun ? "true" : "false"}
+              >
                 Send Messages
               </Link>
               <Link href="/files" className="btn-secondary btn-linklike header-files-link">

@@ -131,6 +131,11 @@ body {
   justify-content: center;
   text-decoration: none;
 }
+.disabled-link {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
 
 /* Map */
 .map-container {
