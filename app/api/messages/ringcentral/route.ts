@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to send message.";
+    console.error("RingCentral send error:", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
