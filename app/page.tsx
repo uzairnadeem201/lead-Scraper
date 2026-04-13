@@ -288,6 +288,9 @@ export default function Page() {
               </p>
             </div>
             <div className="header-right">
+              <Link href="/messages" className="btn-secondary btn-linklike header-files-link">
+                Send Messages
+              </Link>
               <Link href="/files" className="btn-secondary btn-linklike header-files-link">
                 Scrape Files
               </Link>

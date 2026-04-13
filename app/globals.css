@@ -523,6 +523,15 @@ tbody tr:hover { background: rgba(255,255,255,0.03); }
   border: 1px solid var(--border);
   background: rgba(255,255,255,0.03);
 }
+.message-sent-row {
+  opacity: 0.72;
+  border-color: rgba(16,185,129,0.28);
+}
+.message-sent-row .file-main {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(255,255,255,0.5);
+}
 .file-main {
   flex: 1;
   min-width: 0;
