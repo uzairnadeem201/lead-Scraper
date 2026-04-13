@@ -291,24 +291,6 @@ export default function Page() {
             <div className="header-right">
               <button
                 type="button"
-                className={`btn-secondary header-files-link ${
-                  dashboardData.activeRun ? "disabled-link" : ""
-                }`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (dashboardData.activeRun) {
-                    setErrorMessage("Stop or finish the live scrape before opening Send Messages.");
-                    return;
-                  }
-                  router.push("/messages");
-                }}
-                aria-disabled={dashboardData.activeRun ? "true" : undefined}
-              >
-                Send Messages
-              </button>
-              <button
-                type="button"
                 className="btn-secondary header-files-link"
                 onClick={(event) => {
                   event.preventDefault();
