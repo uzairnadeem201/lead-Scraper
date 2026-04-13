@@ -1,7 +1,7 @@
 'use client';
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { LogOut } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
@@ -24,6 +24,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 }
 
 export default function Page() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const [locationLabel, setLocationLabel] = useState("");
   const [lat, setLat] = useState<number | null>(null);
@@ -288,24 +289,35 @@ export default function Page() {
               </p>
             </div>
             <div className="header-right">
-              <Link
-                href="/messages"
-                className={`btn-secondary btn-linklike header-files-link ${
+              <button
+                type="button"
+                className={`btn-secondary header-files-link ${
                   dashboardData.activeRun ? "disabled-link" : ""
                 }`}
                 onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
                   if (dashboardData.activeRun) {
-                    event.preventDefault();
                     setErrorMessage("Stop or finish the live scrape before opening Send Messages.");
+                    return;
                   }
+                  router.push("/messages");
                 }}
-                aria-disabled={dashboardData.activeRun ? "true" : "false"}
+                aria-disabled={dashboardData.activeRun ? "true" : undefined}
               >
                 Send Messages
-              </Link>
-              <Link href="/files" className="btn-secondary btn-linklike header-files-link">
+              </button>
+              <button
+                type="button"
+                className="btn-secondary header-files-link"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  router.push("/files");
+                }}
+              >
                 Scrape Files
-              </Link>
+              </button>
               <div className="user-profile">
                 <div className="user-info">
                   <span className="user-name">
