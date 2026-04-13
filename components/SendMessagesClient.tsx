@@ -41,7 +41,10 @@ export function SendMessagesClient({ runs }: SendMessagesClientProps) {
   const [bulkSending, setBulkSending] = useState(false);
 
   const sortedRuns = useMemo(
-    () => [...runs].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()),
+    () =>
+      [...runs].sort(
+        (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      ),
     [runs]
   );
 
@@ -184,11 +187,15 @@ export function SendMessagesClient({ runs }: SendMessagesClientProps) {
         <div className="files-filters">
           <label className="files-filter" style={{ gridColumn: "1 / -1" }}>
             <span>Scrape file</span>
-            <select value={selectedRunId} onChange={(event) => setSelectedRunId(event.target.value)}>
+            <select
+              value={selectedRunId}
+              onChange={(event) => setSelectedRunId(event.target.value)}
+            >
               <option value="">Choose a scrape file</option>
               {sortedRuns.map((run) => (
                 <option key={run.id} value={run.id}>
-                  {run.nicheName} · {run.locationLabel} · {new Date(run.startedAt).toLocaleString()}
+                  {run.nicheName} · {run.locationLabel} ·{" "}
+                  {new Date(run.startedAt).toLocaleString()}
                 </option>
               ))}
             </select>
@@ -220,30 +227,43 @@ export function SendMessagesClient({ runs }: SendMessagesClientProps) {
           </div>
           <div className="run-summary-stack">
             <div>
-              {selectedData.run.campaignMode.replaceAll("_", " ")} · {selectedData.run.radiusKm} km ·{" "}
+              {selectedData.run.campaignMode.replaceAll("_", " ")} ·{" "}
+              {selectedData.run.radiusKm} km ·{" "}
               {new Date(selectedData.run.startedAt).toLocaleString()}
             </div>
-            <div>
-              {selectedData.leads.length} leads loaded for messaging
-            </div>
+            <div>{selectedData.leads.length} leads loaded for messaging</div>
           </div>
           <div className="run-actions">
-            <button className="btn-locate" onClick={() => void sendAllPending()} disabled={bulkSending}>
+            <button
+              type="button"
+              className="btn-locate"
+              onClick={() => void sendAllPending()}
+              disabled={bulkSending}
+            >
               {bulkSending ? "Sending..." : "Send All Pending"}
             </button>
-            <Link href={`/runs/${selectedData.run.id}`} className="btn-secondary btn-linklike">
+            <Link
+              href={`/runs/${selectedData.run.id}`}
+              className="btn-secondary btn-linklike"
+            >
               Open checklist
             </Link>
           </div>
           <div className="files-list" style={{ marginTop: "18px" }}>
             {selectedData.leads.map((lead) => {
               const status = leadStatusById[lead.id] ?? { state: "idle", error: "" };
+
               return (
-                <div key={lead.id} className={`file-row ${status.state === "sent" ? "message-sent-row" : ""}`}>
+                <div
+                  key={lead.id}
+                  className={`file-row ${status.state === "sent" ? "message-sent-row" : ""}`}
+                >
                   <div className="file-main">
                     <div className="file-title-row">
                       <h3>{lead.businessName}</h3>
-                      <span className="status-badge">{lead.classification.replaceAll("_", " ")}</span>
+                      <span className="status-badge">
+                        {lead.classification.replaceAll("_", " ")}
+                      </span>
                     </div>
                     <div className="file-meta">
                       <span>{lead.phoneDisplay || "No phone"}</span>
@@ -258,9 +278,18 @@ export function SendMessagesClient({ runs }: SendMessagesClientProps) {
                   </div>
                   <div className="file-actions">
                     <button
+                      type="button"
                       className="btn-locate"
-                      onClick={() => void sendLead(lead)}
-                      disabled={!lead.phoneDisplay || status.state === "sending" || status.state === "sent"}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void sendLead(lead);
+                      }}
+                      disabled={
+                        !lead.phoneDisplay ||
+                        status.state === "sending" ||
+                        status.state === "sent"
+                      }
                     >
                       {status.state === "sent"
                         ? "Sent"
@@ -269,7 +298,13 @@ export function SendMessagesClient({ runs }: SendMessagesClientProps) {
                           : "Send message"}
                     </button>
                     {lead.googleMapsUrl ? (
-                      <a href={lead.googleMapsUrl} target="_blank" rel="noreferrer" className="btn-secondary btn-linklike">
+                      <a
+                        href={lead.googleMapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-secondary btn-linklike"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         Open lead
                       </a>
                     ) : null}
