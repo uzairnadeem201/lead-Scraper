@@ -13,6 +13,7 @@ import {
   asc,
   desc,
   eq,
+  lt,
 } from "drizzle-orm";
 
 type ScrapeRunRow = typeof scrapeRuns.$inferSelect;
@@ -56,6 +57,30 @@ export async function getActiveRun(userId: string) {
     .limit(1);
 
   return run ?? null;
+}
+
+export async function recoverStaleRuns(userId: string) {
+  const cutoff = new Date(Date.now() - SCRAPER_CONFIG.staleRunThresholdMs);
+
+  await db
+    .update(scrapeRuns)
+    .set({
+      status: "completed",
+      stopReason: "user_stopped",
+      currentPhase: "completed",
+      currentTerm: null,
+      cancelRequested: true,
+      errorMessage: "Recovered stale run after heartbeat timeout.",
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(scrapeRuns.userId, userId),
+        eq(scrapeRuns.status, "running"),
+        lt(scrapeRuns.updatedAt, cutoff)
+      )
+    );
 }
 
 export async function getRunById(userId: string, runId: string) {

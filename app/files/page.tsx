@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { FilesLibrary } from "@/components/FilesLibrary";
-import { getRunsForDashboard } from "@/lib/runs/repository";
+import { getRunsForDashboard, recoverStaleRuns } from "@/lib/runs/repository";
 
 export default async function FilesPage() {
   const session = await auth();
@@ -10,6 +10,7 @@ export default async function FilesPage() {
     redirect("/");
   }
 
+  await recoverStaleRuns(session.user.id);
   const data = await getRunsForDashboard(session.user.id);
 
   return <FilesLibrary runs={data.history} />;

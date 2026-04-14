@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { getRunChecklistData } from "@/lib/runs/repository";
+import { getRunChecklistData, recoverStaleRuns } from "@/lib/runs/repository";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -13,6 +13,7 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  await recoverStaleRuns(session.user.id);
   const { id } = await context.params;
   const data = await getRunChecklistData(session.user.id, id);
   if (!data) {

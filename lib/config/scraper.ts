@@ -13,6 +13,7 @@ export const SCRAPER_CONFIG = {
   detailsConcurrency: 3,
   maxDetailsRetries: 2,
   pollIntervalMs: 2500,
+  staleRunThresholdMs: 30 * 1000,
   livePreviewCount: 5,
   historyPreviewCount: 25,
 } as const;

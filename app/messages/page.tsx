@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { SendMessagesClient } from "@/components/SendMessagesClient";
-import { getRunsForDashboard } from "@/lib/runs/repository";
+import { getRunsForDashboard, recoverStaleRuns } from "@/lib/runs/repository";
 
 export default async function MessagesPage() {
   const session = await auth();
@@ -10,6 +10,7 @@ export default async function MessagesPage() {
     redirect("/");
   }
 
+  await recoverStaleRuns(session.user.id);
   const data = await getRunsForDashboard(session.user.id);
 
   return <SendMessagesClient runs={data.history} />;

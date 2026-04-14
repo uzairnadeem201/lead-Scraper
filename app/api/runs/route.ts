@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getReadableRunError } from "@/lib/runs/errors";
-import { createRun, getActiveRun, getRunsForDashboard } from "@/lib/runs/repository";
+import {
+  createRun,
+  getActiveRun,
+  getRunsForDashboard,
+  recoverStaleRuns,
+} from "@/lib/runs/repository";
 import { startRunWorker } from "@/lib/runs/orchestrator";
 
 export async function GET() {
@@ -11,6 +16,7 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    await recoverStaleRuns(session.user.id);
     const data = await getRunsForDashboard(session.user.id);
     return NextResponse.json(data);
   } catch (error) {
@@ -25,6 +31,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    await recoverStaleRuns(session.user.id);
     const existingActiveRun = await getActiveRun(session.user.id);
     if (existingActiveRun) {
       return NextResponse.json(

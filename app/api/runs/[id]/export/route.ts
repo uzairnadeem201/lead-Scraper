@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { buildCsvExport, buildXlsxExport } from "@/lib/runs/export";
 import { getReadableRunError } from "@/lib/runs/errors";
-import { getRunExportData } from "@/lib/runs/repository";
+import { getRunExportData, recoverStaleRuns } from "@/lib/runs/repository";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -16,6 +16,7 @@ export async function GET(request: Request, context: Context) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    await recoverStaleRuns(session.user.id);
     const { id } = await context.params;
     const exportData = await getRunExportData(session.user.id, id);
     if (!exportData) {
