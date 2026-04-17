@@ -137,9 +137,5 @@ export async function sendRingCentralSms(params: { toNumber: string; text: strin
 }
 
 export function buildLeadMessage(storeName: string) {
-  return `${storeName}! The thing is, I can help you increase your customers and since your services are already good, those customers will stick around and boost your sales.
-
-I don’t have a magic wand, but I can show you what others are doing: they use personalized websites to influence customer psychology and build trust, making them look like the best option in town. You can check any nearby business for reference.
-
-I can build the same for you. All I ask is a free consultation—if you like my work, we move forward; if not, you lose nothing. WIN-WIN!`;
+  return `Hello! is this ${storeName}? I have a suggestion for you. `;
 }
