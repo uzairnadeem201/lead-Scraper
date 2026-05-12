@@ -13,6 +13,7 @@ import {
   asc,
   desc,
   eq,
+  inArray,
   lt,
 } from "drizzle-orm";
 
@@ -314,8 +315,10 @@ function toLegacyPreview(
   }));
 }
 
-async function toSummary(run: ScrapeRunRow, previewLimit: number): Promise<RunSummary> {
-  const previewRows = await getRunPreview(run.id, previewLimit);
+function buildSummary(
+  run: ScrapeRunRow,
+  preview: RunLeadPreview[]
+): RunSummary {
   const niche = getNiche(run.niche);
   const isPartialRun = run.stopReason === "user_stopped";
   const targetReached = run.stopReason === "target_reached";
@@ -361,8 +364,13 @@ async function toSummary(run: ScrapeRunRow, previewLimit: number): Promise<RunSu
       run.detailsCallCount > 0 ? run.matchingLeadCount / run.detailsCallCount : null,
     discoveryEfficiency:
       run.discoveryCallCount > 0 ? run.matchingLeadCount / run.discoveryCallCount : null,
-    preview: toPreview(previewRows),
+    preview,
   };
+}
+
+async function toSummary(run: ScrapeRunRow, previewLimit: number): Promise<RunSummary> {
+  const previewRows = await getRunPreview(run.id, previewLimit);
+  return buildSummary(run, toPreview(previewRows));
 }
 
 async function getLegacyRunPreview(scrapeId: string, limit: number) {
@@ -374,13 +382,12 @@ async function getLegacyRunPreview(scrapeId: string, limit: number) {
     .limit(limit);
 }
 
-async function toLegacySummary(
+function buildLegacySummary(
   scrape: typeof scrapes.$inferSelect,
-  previewLimit: number
-): Promise<RunSummary> {
-  const previewRows = await getLegacyRunPreview(scrape.id, previewLimit);
+  preview: RunLeadPreview[],
+  matchingLeadCount: number
+): RunSummary {
   const niche = getNiche(scrape.niche);
-  const matchingLeadCount = previewRows.length;
 
   return {
     id: `legacy:${scrape.id}`,
@@ -408,8 +415,16 @@ async function toLegacySummary(
     targetReached: false,
     detailsEfficiency: null,
     discoveryEfficiency: null,
-    preview: toLegacyPreview(previewRows),
+    preview,
   };
+}
+
+async function toLegacySummary(
+  scrape: typeof scrapes.$inferSelect,
+  previewLimit: number
+): Promise<RunSummary> {
+  const previewRows = await getLegacyRunPreview(scrape.id, previewLimit);
+  return buildLegacySummary(scrape, toLegacyPreview(previewRows), previewRows.length);
 }
 
 function isLegacyRunId(runId: string) {
@@ -421,17 +436,19 @@ function getLegacyScrapeId(runId: string) {
 }
 
 export async function getRunsForDashboard(userId: string): Promise<RunListResponse> {
-  const runs = await db
-    .select()
-    .from(scrapeRuns)
-    .where(eq(scrapeRuns.userId, userId))
-    .orderBy(desc(scrapeRuns.createdAt));
-
-  const legacyScrapes = await db
-    .select()
-    .from(scrapes)
-    .where(eq(scrapes.userId, userId))
-    .orderBy(desc(scrapes.createdAt));
+  // 1. Fetch runs + legacy scrapes in parallel (2 queries)
+  const [runs, legacyScrapes] = await Promise.all([
+    db
+      .select()
+      .from(scrapeRuns)
+      .where(eq(scrapeRuns.userId, userId))
+      .orderBy(desc(scrapeRuns.createdAt)),
+    db
+      .select()
+      .from(scrapes)
+      .where(eq(scrapes.userId, userId))
+      .orderBy(desc(scrapes.createdAt)),
+  ]);
 
   const active = runs.find((run) => run.status === "running") ?? null;
   const historyRows = runs
@@ -446,13 +463,75 @@ export async function getRunsForDashboard(userId: string): Promise<RunListRespon
       return b.createdAt.getTime() - a.createdAt.getTime();
     });
 
-  const activeRun = active ? await toSummary(active, SCRAPER_CONFIG.livePreviewCount) : null;
-  const newHistory = await Promise.all(
-    historyRows.map((run) => toSummary(run, SCRAPER_CONFIG.livePreviewCount))
+  // 2. Batch-fetch all previews in parallel (max 2 more queries)
+  //    - One query for all new-system run previews
+  //    - One query for all legacy lead previews
+  //    - Active run preview fetched individually only if needed
+  const allRunIds = [...(active ? [active.id] : []), ...historyRows.map((r) => r.id)];
+  const allLegacyIds = legacyScrapes.map((s) => s.id);
+
+  const [allSnapshots, allLegacyLeads] = await Promise.all([
+    allRunIds.length > 0
+      ? db
+          .select()
+          .from(runLeadSnapshots)
+          .where(
+            and(
+              inArray(runLeadSnapshots.runId, allRunIds),
+              eq(runLeadSnapshots.matched, true)
+            )
+          )
+          .orderBy(asc(runLeadSnapshots.rank), desc(runLeadSnapshots.totalReviews))
+      : Promise.resolve([]),
+    allLegacyIds.length > 0
+      ? db
+          .select()
+          .from(leads)
+          .where(inArray(leads.scrapeId, allLegacyIds))
+          .orderBy(desc(leads.totalReviews))
+      : Promise.resolve([]),
+  ]);
+
+  // 3. Group snapshots by runId in memory
+  const snapshotsByRunId = new Map<string, typeof allSnapshots>();
+  for (const snap of allSnapshots) {
+    const list = snapshotsByRunId.get(snap.runId) ?? [];
+    list.push(snap);
+    snapshotsByRunId.set(snap.runId, list);
+  }
+
+  const legacyLeadsByScrapeId = new Map<string, typeof allLegacyLeads>();
+  for (const lead of allLegacyLeads) {
+    const list = legacyLeadsByScrapeId.get(lead.scrapeId) ?? [];
+    list.push(lead);
+    legacyLeadsByScrapeId.set(lead.scrapeId, list);
+  }
+
+  // 4. Build summaries from pre-loaded data (no more DB queries)
+  const previewLimit = SCRAPER_CONFIG.livePreviewCount;
+
+  const activeRun = active
+    ? buildSummary(
+        active,
+        toPreview((snapshotsByRunId.get(active.id) ?? []).slice(0, previewLimit))
+      )
+    : null;
+
+  const newHistory = historyRows.map((run) =>
+    buildSummary(
+      run,
+      toPreview((snapshotsByRunId.get(run.id) ?? []).slice(0, previewLimit))
+    )
   );
-  const legacyHistory = await Promise.all(
-    legacyScrapes.map((scrape) => toLegacySummary(scrape, SCRAPER_CONFIG.livePreviewCount))
-  );
+
+  const legacyHistory = legacyScrapes.map((scrape) => {
+    const scrapeLeads = legacyLeadsByScrapeId.get(scrape.id) ?? [];
+    return buildLegacySummary(
+      scrape,
+      toLegacyPreview(scrapeLeads.slice(0, previewLimit)),
+      scrapeLeads.length
+    );
+  });
 
   const history = [...newHistory, ...legacyHistory].sort((a, b) => {
     const aSuccessful = a.status !== "failed" || a.matchingLeadCount > 0;

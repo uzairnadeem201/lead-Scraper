@@ -30,6 +30,20 @@ const CHAIN_PATTERNS = [
   "dunkin",
   "taco bell",
   "7-eleven",
+  "ikea",
+  "ashley furniture",
+  "ashley homestore",
+  "rooms to go",
+  "wayfair",
+  "pottery barn",
+  "west elm",
+  "restoration hardware",
+  "la-z-boy",
+  "ethan allen",
+  "haverty",
+  "bob's discount",
+  "value city furniture",
+  "big lots",
 ];
 
 export function classifyWebsite(url: string | null | undefined) {

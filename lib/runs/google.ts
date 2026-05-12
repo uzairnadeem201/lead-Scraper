@@ -151,12 +151,22 @@ async function textSearchNew(params: Record<string, string | number | undefined>
 
   if (params.location && params.radius) {
     const [latitude, longitude] = String(params.location).split(",").map(Number);
-    const radius = Number(params.radius);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude) && Number.isFinite(radius)) {
-      body.locationBias = {
-        circle: {
-          center: { latitude, longitude },
-          radius: Math.min(Math.max(radius, 1), 50000),
+    const radiusM = Math.min(Math.max(Number(params.radius), 1), 50000);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude) && Number.isFinite(radiusM)) {
+      // Convert circle to bounding rectangle (Text Search only accepts rectangle for locationRestriction)
+      const latOffset = radiusM / 111_320; // ~111.32km per degree of latitude
+      const lngOffset =
+        radiusM / (111_320 * Math.max(Math.cos((latitude * Math.PI) / 180), 0.0001));
+      body.locationRestriction = {
+        rectangle: {
+          low: {
+            latitude: latitude - latOffset,
+            longitude: longitude - lngOffset,
+          },
+          high: {
+            latitude: latitude + latOffset,
+            longitude: longitude + lngOffset,
+          },
         },
       };
     }

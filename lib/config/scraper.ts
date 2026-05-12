@@ -16,6 +16,7 @@ export const SCRAPER_CONFIG = {
   staleRunThresholdMs: 30 * 1000,
   livePreviewCount: 5,
   historyPreviewCount: 25,
+  gridSearchThresholdKm: 10,
 } as const;
 
 export const NICHES: Record<string, NicheDef> = {
@@ -81,6 +82,29 @@ export const NICHES: Record<string, NicheDef> = {
     primaryTerms: ["auto detailer", "car detailing", "auto detailing"],
     fallbackTerms: ["mobile detailing"],
     nearbyTypes: ["car_wash"],
+  },
+  furniture: {
+    name: "Furniture Shops & Related Services",
+    icon: "🪑",
+    primaryTerms: [
+      "furniture store",
+      "furniture shop",
+      "home furniture",
+      "custom furniture",
+      "furniture showroom",
+    ],
+    fallbackTerms: [
+      "office furniture",
+      "outdoor furniture",
+      "furniture repair",
+      "furniture upholstery",
+      "furniture restoration",
+      "mattress store",
+      "antique furniture",
+      "kitchen cabinets",
+      "furniture refinishing",
+    ],
+    nearbyTypes: ["furniture_store", "home_goods_store"],
   },
 };
 

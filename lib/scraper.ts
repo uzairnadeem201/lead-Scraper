@@ -68,6 +68,11 @@ export const NICHES: Record<string, NicheDef> = {
     terms: ["auto detailer", "car detailing", "auto detailing", "mobile detailing"],
     types: ["car_wash"],
   },
+  furniture: {
+    name: "Furniture Shops & Related Services", icon: "🪑",
+    terms: ["furniture store", "furniture shop", "home furniture", "custom furniture", "furniture showroom", "office furniture", "outdoor furniture", "furniture repair", "furniture upholstery", "furniture restoration", "mattress store", "antique furniture", "kitchen cabinets", "furniture refinishing"],
+    types: ["furniture_store", "home_goods_store"],
+  },
 };
 
 const SOCIAL_DOMAINS: Record<string, string> = {
